@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ứng dụng Phản chiếu Màn hình lên TV</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 { color: #00adb5; }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        button {
+            background-color: #00adb5;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            transition: 0.3s;
+        }
+        button:hover { background-color: #007c82; }
+        input {
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #333;
+            background: #333;
+            color: white;
+            text-align: center;
+            width: 200px;
+        }
+        #video-container {
+            margin-top: 20px;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        video {
+            width: 100%;
+            height: auto;
+            max-height: 80vh;
+        }
+        .status {
+            margin: 15px 0;
+            font-style: italic;
+            color: #bbb;
+        }
+        .box {
+            border: 1px solid #333;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            background: #252525;
+        }
+    </style>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+    <h1>Web Screen Mirroring to TV</h1>
+    <div class="container">
+        <p>Phản chiếu màn hình từ Điện thoại lên Smart TV không cần cài đặt app.</p>
+        
+        <div id="status" class="status">Đang khởi tạo hệ thống kết nối...</div>
+
+        <div class="box" id="tv-section">
+            <h3>BƯỚC 1: DÀNH CHO TV (Thiết bị nhận)</h3>
+            <p>Mở trình duyệt trên TV, truy cập trang này và nhập Mã Phòng bất kỳ bên dưới:</p>
+            <input type="text" id="room-id" placeholder="Nhập mã phòng (VD: tivi123)">
+            <br>
+            <button onclick="initTV()">Biến TV này thành thiết bị nhận</button>
+        </div>
+
+        <div class="box" id="phone-section" style="display:none;">
+            <h3>BƯỚC 2: DÀNH CHO ĐIỆN THOẠI (Thiết bị gửi)</h3>
+            <p>TV đã sẵn sàng! Bây giờ bấm nút bên dưới trên điện thoại để bắt đầu chia sẻ.</p>
+            <button onclick="startStreaming()">Bắt đầu Phát Màn Hình</button>
+        </div>
+
+        <div id="video-container" style="display: none;">
+            <video id="remote-video" autoplay playsinline></video>
+        </div>
+    </div>
+
+    <script>
+        let peer = null;
+        let currentRoomId = "";
+        let localStream = null;
+
+        // Trình duyệt tự động tạo ID ngẫu nhiên hoặc người dùng tự nhập
+        document.getElementById('room-id').value = 'room_' + Math.floor(Math.random() * 10000);
+
+        // 1. CẤU HÌNH CHO TV (RECEIVER)
+        function initTV() {
+            currentRoomId = document.getElementById('room-id').value.trim();
+            if(!currentRoomId) {
+                alert("Vui lòng nhập mã phòng!");
+                return;
+            }
+
+            // Khởi tạo PeerJS kết nối tới server trung gian công cộng
+            peer = new Peer(currentRoomId);
+
+            peer.on('open', (id) => {
+                document.getElementById('status').innerText = `TV đã sẵn sàng nhận tín hiệu. Mã Phòng của bạn là: ${id}`;
+                document.getElementById('tv-section').style.display = 'none';
+                document.getElementById('video-container').style.display = 'block';
+                
+                // Mẹo để người dùng có thể test trên cùng 1 thiết bị: hiện phần điện thoại
+                document.getElementById('phone-section').style.display = 'block';
+            });
+
+            // Khi có điện thoại gọi (gửi stream) đến
+            peer.on('call', (call) => {
+                document.getElementById('status').innerText = "Đang nhận luồng video từ điện thoại...";
+                call.answer(); // Chấp nhận cuộc gọi không cần gửi lại stream từ TV
+                
+                call.on('stream', (remoteStream) => {
+                    // Hiển thị màn hình điện thoại lên thẻ video của TV
+                    const video = document.getElementById('remote-video');
+                    video.srcObject = remoteStream;
+                    document.getElementById('status').innerText = "Đang phản chiếu màn hình thành công!";
+                });
+            });
+
+            peer.on('error', (err) => {
+                console.error(err);
+                document.getElementById('status').innerText = "Lỗi kết nối: " + err.type;
+            });
+        }
+
+        // 2. CẤU HÌNH CHO ĐIỆN THOẠI (SENDER)
+        async function startStreaming() {
+            document.getElementById('status').innerText = "Đang yêu cầu quyền quay màn hình...";
+            
+            try {
+                // Kích hoạt tính năng quay màn hình của hệ điều hành trên điện thoại/máy tính
+                // Lưu ý quan trọng: Một số trình duyệt điện thoại cũ/iOS cũ có thể giới hạn getDisplayMedia.
+                // Nếu dùng điện thoại Android, hãy sử dụng trình duyệt Chrome bản mới nhất.
+                localStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        cursor: "always",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 30 }
+                    },
+                    audio: true // Thử nghiệm truyền cả âm thanh hệ thống nếu OS cho phép
+                });
+
+                document.getElementById('status').innerText = "Đang kết nối tới TV...";
+                
+                // Tạo một kết nối ẩn từ điện thoại để gọi tới ID của TV
+                const senderPeer = new Peer();
+                senderPeer.on('open', (id) => {
+                    // Tiến hành "gọi video" và gửi màn hình đã quay cho TV
+                    const call = senderPeer.call(currentRoomId, localStream);
+                    document.getElementById('status').innerText = "Đang truyền dữ liệu màn hình sang TV...";
+                    
+                    // Lắng nghe nếu tắt chia sẻ màn hình trên điện thoại
+                    localStream.getVideoTracks()[0].onended = function () {
+                        document.getElementById('status').innerText = "Đã dừng chia sẻ màn hình.";
+                        senderPeer.destroy();
+                    };
+                });
+
+            } catch (err) {
+                console.error("Lỗi lấy màn hình: ", err);
+                document.getElementById('status').innerText = "Lỗi: Không thể lấy quyền quay màn hình. Hãy đảm bảo bạn đang dùng Chrome/Safari bản mới nhất.";
+            }
+        }
+    </script>
+</body>
+</html>
